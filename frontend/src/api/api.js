@@ -59,3 +59,34 @@ export const getSenderEmails = async (senderId) => {
 
   return data;
 };
+
+
+export const getEmailAccounts = async () => {
+  const response = await fetch(`${API_BASE_URL}/email-accounts`, {
+    method: "GET",
+    headers: getAuthHeaders(),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.message || "Failed to fetch email accounts");
+  }
+
+  return data;
+};
+
+export const syncEmailAccount = async (emailAccountId) => {
+  const response = await fetch(`${API_BASE_URL}/email-accounts/${emailAccountId}/sync`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.message || "Email sync failed");
+  }
+
+  return data;
+};
