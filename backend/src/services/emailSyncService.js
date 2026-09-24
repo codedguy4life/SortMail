@@ -110,7 +110,7 @@ const syncEmails = async (emailAccountId, maxResults = 20) => {
       gmailMessageId: gmailMessage.id,
       threadId: gmailMessage.threadId,
       subject,
-      receivedAt: new Date(date),
+      receivedAt,
       isRead: !(gmailMessage.labelIds || []).includes("UNREAD"),
       labels: gmailMessage.labelIds || [],
     });
