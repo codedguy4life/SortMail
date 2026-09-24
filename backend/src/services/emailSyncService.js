@@ -27,7 +27,11 @@ const parseSender = (from) => {
   };
 };
 
-const syncEmails = async (emailAccountId, maxResults = 20) => {
+const syncEmails = async (
+  emailAccountId,
+  pageSize = 100,
+  maxMessages = 500,
+) => {
   const emailAccount = await EmailAccount.findById(emailAccountId);
 
   if (!emailAccount) {
@@ -36,95 +40,137 @@ const syncEmails = async (emailAccountId, maxResults = 20) => {
 
   const gmail = createGmailClient(emailAccount);
 
-  const listResponse = await gmail.users.messages.list({
-    userId: "me",
-    maxResults,
-  });
-
-  const messages = listResponse.data.messages || [];
-
+  let pageToken;
+  let fetchedCount = 0;
   let syncedCount = 0;
+  let updatedCount = 0;
 
-  for (const message of messages) {
-    const messageResponse = await gmail.users.messages.get({
+  do {
+    const remaining = maxMessages - fetchedCount;
+
+    if (remaining <= 0) {
+      break;
+    }
+
+    const listResponse = await gmail.users.messages.list({
       userId: "me",
-      id: message.id,
-      format: "metadata",
-      metadataHeaders: ["From", "Subject", "Date"],
+      maxResults: Math.min(pageSize, remaining),
+      ...(pageToken ? { pageToken } : {}),
     });
 
-    const gmailMessage = messageResponse.data;
+    const messages = listResponse.data.messages || [];
+    fetchedCount += messages.length;
 
-    const headers = gmailMessage.payload?.headers || [];
+    for (const message of messages) {
+      const messageResponse = await gmail.users.messages.get({
+        userId: "me",
+        id: message.id,
+        format: "metadata",
+        metadataHeaders: ["From", "Subject", "Date"],
+      });
 
-    const from = getHeader(headers, "From");
-    const subject = getHeader(headers, "Subject");
-    const date = getHeader(headers, "Date");
+      const gmailMessage = messageResponse.data;
+      const headers = gmailMessage.payload?.headers || [];
 
-    const sender = parseSender(from);
+      const from = getHeader(headers, "From");
+      const subject = getHeader(headers, "Subject");
+      const date = getHeader(headers, "Date");
+      const receivedAt = new Date(date);
 
-    if (!sender.emailAddress) {
-      continue;
-    }
+      if (Number.isNaN(receivedAt.getTime())) {
+        continue;
+      }
 
-    const domain = sender.emailAddress.split("@")[1];
+      const sender = parseSender(from);
 
-    if (!domain) {
-      continue;
-    }
+      if (!sender.emailAddress) {
+        continue;
+      }
 
-    const senderRecord = await Sender.findOneAndUpdate(
-      {
+      const domain = sender.emailAddress.split("@")[1];
+
+      if (!domain) {
+        continue;
+      }
+
+      const senderRecord = await Sender.findOneAndUpdate(
+        {
+          userId: emailAccount.userId,
+          emailAccountId: emailAccount._id,
+          emailAddress: sender.emailAddress,
+        },
+        {
+          $set: {
+            userId: emailAccount.userId,
+            emailAccountId: emailAccount._id,
+            emailAddress: sender.emailAddress,
+            domain,
+            displayName: sender.displayName,
+          },
+          $max: {
+            lastMessageAt: receivedAt,
+          },
+        },
+        {
+          new: true,
+          upsert: true,
+          setDefaultsOnInsert: true,
+        },
+      );
+
+      const isRead = !(gmailMessage.labelIds || []).includes("UNREAD");
+      const labels = gmailMessage.labelIds || [];
+
+      const existingEmail = await Email.findOne({
+        emailAccountId: emailAccount._id,
+        gmailMessageId: gmailMessage.id,
+      });
+
+      if (existingEmail) {
+        await Email.updateOne(
+          { _id: existingEmail._id },
+          {
+            $set: {
+              subject,
+              receivedAt,
+              isRead,
+              labels,
+              senderId: senderRecord._id,
+              threadId: gmailMessage.threadId,
+            },
+          },
+        );
+
+        updatedCount++;
+        continue;
+      }
+
+      await Email.create({
         userId: emailAccount.userId,
         emailAccountId: emailAccount._id,
-        emailAddress: sender.emailAddress,
-      },
-      {
-        userId: emailAccount.userId,
-        emailAccountId: emailAccount._id,
-        emailAddress: sender.emailAddress,
-        domain,
-        displayName: sender.displayName,
-        lastMessageAt: new Date(date),
-      },
-      {
-        new: true,
-        upsert: true,
-        setDefaultsOnInsert: true,
-      },
-    );
+        senderId: senderRecord._id,
+        gmailMessageId: gmailMessage.id,
+        threadId: gmailMessage.threadId,
+        subject,
+        receivedAt,
+        isRead,
+        labels,
+      });
 
-    const existingEmail = await Email.findOne({
-      emailAccountId: emailAccount._id,
-      gmailMessageId: gmailMessage.id,
-    });
+      await Sender.findByIdAndUpdate(senderRecord._id, {
+        $inc: { messageCount: 1 },
+      });
 
-    if (existingEmail) {
-      continue;
+      syncedCount++;
     }
 
-    await Email.create({
-      userId: emailAccount.userId,
-      emailAccountId: emailAccount._id,
-      senderId: senderRecord._id,
-      gmailMessageId: gmailMessage.id,
-      threadId: gmailMessage.threadId,
-      subject,
-      receivedAt,
-      isRead: !(gmailMessage.labelIds || []).includes("UNREAD"),
-      labels: gmailMessage.labelIds || [],
-    });
-
-    await Sender.findByIdAndUpdate(senderRecord._id, {
-      $inc: { messageCount: 1 },
-    });
-
-    syncedCount++;
-  }
+    pageToken = listResponse.data.nextPageToken;
+  } while (pageToken && fetchedCount < maxMessages);
 
   return {
-    fetched: messages.length,
+    fetched: fetchedCount,
     synced: syncedCount,
+    updated: updatedCount,
   };
 };
 
