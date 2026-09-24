@@ -25,25 +25,44 @@ const SenderCard = ({ sender, selected, checked, onSelect, onCheck }) => {
 
   const categoryLabel = categoryLabels[sender.category];
   const color = categoryColors[sender.category] || "gray";
-  const lastReceived = sender.lastMessageAt ? new Date(sender.lastMessageAt).toLocaleString() : "No date";
+  const lastReceived = sender.latestReceivedAt
+    ? new Date(sender.latestReceivedAt).toLocaleString()
+    : "No date";
 
   return (
     <article className={"sender-card " + (selected ? "selected" : "")}>
       <label className="sender-checkbox">
-        <input type="checkbox" checked={checked} onChange={() => onCheck(sender._id)} aria-label={"Select " + (sender.displayName || sender.emailAddress)} />
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={() => onCheck(sender._id)}
+          aria-label={"Select " + (sender.displayName || sender.emailAddress)}
+        />
       </label>
 
       <button className="sender-main" onClick={() => onSelect(sender._id)}>
         <span className={"avatar " + color}>{initials}</span>
+
         <span className="sender-copy">
-          <strong>{sender.displayName || sender.emailAddress}</strong>
+          <span className="sender-title-line">
+            <strong>{sender.displayName || sender.emailAddress}</strong>
+            {categoryLabel && <span className={"category-badge " + color}>{categoryLabel}</span>}
+          </span>
           <span>{sender.domain || sender.emailAddress}</span>
-          {categoryLabel && (
-            <span className="sender-signals"><span className={"mini-dot " + color} /><span>{categoryLabel}</span></span>
+          {sender.latestSubject && (
+            <span className="sender-subject">{sender.latestSubject}</span>
           )}
         </span>
-        <span className="sender-meta"><b>{sender.messageCount || 0}</b><small>emails</small></span>
-        <span className="sender-last"><b>Last received</b><small>{lastReceived}</small></span>
+
+        <span className="sender-volume">
+          <b>{sender.messageCount || 0}</b>
+          <small>{sender.unreadCount || 0} unread</small>
+        </span>
+
+        <span className="sender-last">
+          <b>{lastReceived}</b>
+          <small>last received</small>
+        </span>
       </button>
     </article>
   );
