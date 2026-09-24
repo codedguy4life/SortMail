@@ -23,6 +23,21 @@ const Dashboard = () => {
       .finally(() => setLoading(false));
   }, []);
 
+  const counts = useMemo(() => {
+    const result = { all: 0, people: 0, companies: 0, newsletters: 0, transactions: 0, notifications: 0 };
+    senders.forEach((sender) => {
+      const count = sender.messageCount || 0;
+      result.all += count;
+      if (result[sender.category] !== undefined) result[sender.category] += count;
+    });
+    return result;
+  }, [senders]);
+
+  const inactiveCount = useMemo(() => {
+    const cutoff = Date.now() - 60 * 24 * 60 * 60 * 1000;
+    return senders.filter((sender) => sender.lastMessageAt && new Date(sender.lastMessageAt).getTime() < cutoff).length;
+  }, [senders]);
+
   const filteredSenders = useMemo(() => {
     const query = search.trim().toLowerCase();
     return senders.filter((sender) => {
@@ -30,9 +45,25 @@ const Dashboard = () => {
         sender.displayName?.toLowerCase().includes(query) ||
         sender.emailAddress?.toLowerCase().includes(query) ||
         sender.domain?.toLowerCase().includes(query);
-      const matchesCategory = activeCategory === "all" ||
-        activeCategory === "manage" ||
-        sender.category === activeCategory;
+
+      let matchesCategory = true;
+      if (["all", "people", "companies", "newsletters", "transactions", "notifications"].includes(activeCategory)) {
+        const backendCategory = {
+          people: "person",
+          companies: "company",
+          newsletters: "subscription",
+          transactions: "transaction",
+          notifications: "notification",
+        }[activeCategory];
+
+        matchesCategory = activeCategory === "all" || sender.category === backendCategory;
+      } else if (activeCategory === "manage-inactive") {
+        const cutoff = Date.now() - 60 * 24 * 60 * 60 * 1000;
+        matchesCategory = sender.lastMessageAt && new Date(sender.lastMessageAt).getTime() < cutoff;
+      } else if (activeCategory.startsWith("manage-")) {
+        matchesCategory = false;
+      }
+
       return matchesSearch && matchesCategory;
     });
   }, [senders, search, activeCategory]);
@@ -40,6 +71,7 @@ const Dashboard = () => {
   const changeCategory = (category) => {
     setActiveCategory(category);
     setSelectedSenderId(null);
+    setSelectedIds([]);
   };
 
   const handleCheck = (id) => {
@@ -56,11 +88,38 @@ const Dashboard = () => {
   if (error) return <main className="error-page"><h1>Something went wrong</h1><p>{error}</p><button onClick={handleLogout}>Sign out</button></main>;
 
   const user = JSON.parse(localStorage.getItem("user") || "{}");
-  const totalEmails = senders.reduce((sum, sender) => sum + sender.messageCount, 0);
+  const totalEmails = counts.all;
+
+  const manageCopy = {
+    "manage-inactive": {
+      title: "Inactive senders",
+      subtitle: "Senders with no new email in the last 60 days.",
+    },
+    "manage-trash": {
+      title: "Trash",
+      subtitle: "Deleted messages and senders will appear here once cleanup actions are connected.",
+    },
+    "manage-unsubscribe": {
+      title: "Unsubscribe",
+      subtitle: "Senders with detected unsubscribe options will appear here once detection is connected.",
+    },
+  };
+
+  const isManageView = activeCategory.startsWith("manage-");
+  const headerTitle = isManageView ? manageCopy[activeCategory].title : "See who is filling your inbox.";
+  const headerSubtitle = isManageView
+    ? manageCopy[activeCategory].subtitle
+    : "SortMail turns a crowded inbox into a clear view of the people, companies and subscriptions behind your email.";
 
   return (
     <div className="mail-app">
-      <Sidebar activeCategory={activeCategory} onCategoryChange={changeCategory} onLogout={handleLogout} />
+      <Sidebar
+        activeCategory={activeCategory}
+        onCategoryChange={changeCategory}
+        onLogout={handleLogout}
+        counts={counts}
+        inactiveCount={inactiveCount}
+      />
       <main className="mail-main">
         <header className="mobile-header">
           <div className="brand"><span className="brand-mark">S</span><span>SortMail</span></div>
@@ -70,8 +129,8 @@ const Dashboard = () => {
         <section className="directory-header">
           <div>
             <p className="eyebrow">Good morning{user.name ? `, ${user.name.split(" ")[0]}` : ""}</p>
-            <h1>See who is filling your inbox.</h1>
-            <p className="header-subtitle">SortMail turns a crowded inbox into a clear view of the people, companies and subscriptions behind your email.</p>
+            <h1>{headerTitle}</h1>
+            <p className="header-subtitle">{headerSubtitle}</p>
           </div>
           <div className="inbox-stat"><strong>{totalEmails}</strong><span>emails synced</span></div>
         </section>
@@ -88,9 +147,22 @@ const Dashboard = () => {
           </div>
         </section>
 
-        <div className="batch-alert">
-          <span>✦</span><div><strong>Sender-first inbox</strong><p>Select senders to prepare bulk cleanup actions.</p></div>
-        </div>
+        {!isManageView && (
+          <div className="batch-alert">
+            <span>✦</span>
+            <div>
+              <strong>Sender-first inbox</strong>
+              <p>Select senders to prepare bulk cleanup actions.</p>
+            </div>
+          </div>
+        )}
+
+        {isManageView && (
+          <div className="manage-note">
+            <strong>{manageCopy[activeCategory].title}</strong>
+            <span>{filteredSenders.length} matching senders</span>
+          </div>
+        )}
 
         <SenderList senders={filteredSenders} selectedSenderId={selectedSenderId} selectedIds={selectedIds} onSelect={setSelectedSenderId} onCheck={handleCheck} />
       </main>
