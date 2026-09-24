@@ -9,10 +9,14 @@ const router = express.Router();
 
 router.get("/", authMiddleware, async (req, res) => {
   try {
+    const emailAccounts = await EmailAccount.find({
+      userId: req.user.userId,
+    }).select("_id provider emailAddress providerAccountId createdAt updatedAt");
+
     return res.status(200).json({
       success: true,
-      message: "Email accounts route is protected",
-      userId: req.user.userId,
+      count: emailAccounts.length,
+      emailAccounts,
     });
   } catch (error) {
     console.error("Email accounts error:", error);
@@ -148,6 +152,15 @@ router.post("/:emailAccountId/sync", authMiddleware, async (req, res) => {
       });
     }
 
+    await SyncState.findOneAndUpdate(
+      { emailAccountId: emailAccount._id },
+      {
+        status: "syncing",
+        errorMessage: null,
+      },
+      { upsert: true },
+    );
+
     const result = await syncEmails(emailAccount._id, 100, 500);
 
     await SyncState.findOneAndUpdate(
@@ -168,6 +181,22 @@ router.post("/:emailAccountId/sync", authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error("Email sync error:", error);
+
+    const emailAccount = await EmailAccount.findOne({
+      _id: req.params.emailAccountId,
+      userId: req.user.userId,
+    });
+
+    if (emailAccount) {
+      await SyncState.findOneAndUpdate(
+        { emailAccountId: emailAccount._id },
+        {
+          status: "failed",
+          errorMessage: error.message,
+        },
+        { upsert: true },
+      );
+    }
 
     return res.status(500).json({
       success: false,
