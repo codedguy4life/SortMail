@@ -537,8 +537,23 @@ button { cursor: pointer; }
 
 .sender-copy {
   min-width: 0;
+  flex: 1;
   display: grid;
   gap: 3px;
+}
+
+.sender-title-line {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.sender-title-line strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sender-copy strong,
@@ -550,6 +565,31 @@ button { cursor: pointer; }
 
 .sender-copy strong { font-size: 13px; }
 .sender-copy > span { color: var(--muted); font-size: 11px; }
+
+.category-badge {
+  flex: 0 0 auto;
+  padding: 3px 6px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 600;
+  background: #f0f1f4;
+  color: #777c84;
+}
+
+.category-badge.purple { background: #f0eafe; color: #7042d8; }
+.category-badge.blue { background: #e8f0ff; color: #2459c8; }
+.category-badge.amber { background: #fff4dc; color: #bd7900; }
+.category-badge.red { background: #ffebeb; color: #c73535; }
+.category-badge.cyan { background: #e5f9fc; color: #078ba4; }
+
+.sender-subject {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #555b64 !important;
+  font-size: 10px !important;
+}
 
 .sender-signals {
   display: flex;
@@ -569,20 +609,25 @@ button { cursor: pointer; }
 
 .signal-separator { color: #c1c5cb; }
 
-.sender-meta {
-  min-width: 50px;
-  display: grid;
-  justify-items: end;
-}
-
-.sender-meta b { font-size: 13px; }
-.sender-meta small { color: var(--muted); font-size: 9px; }
-
-.sender-last {
-  min-width: 128px;
+.sender-volume {
+  width: 62px;
+  flex: 0 0 62px;
   display: grid;
   justify-items: end;
   gap: 2px;
+}
+
+.sender-volume b { font-size: 12px; }
+.sender-volume small { color: var(--muted); font-size: 9px; }
+
+.sender-last {
+  width: 116px;
+  flex: 0 0 116px;
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  padding-left: 8px;
+  border-left: 1px solid #f0f1f4;
 }
 
 .sender-last b {
@@ -591,9 +636,19 @@ button { cursor: pointer; }
   font-weight: 600;
 }
 
-.sender-last small {
-  color: #626871;
+.sender-last b {
+  max-width: 116px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #555b64;
   font-size: 10px;
+  font-weight: 600;
+}
+
+.sender-last small {
+  color: #9a9fa7;
+  font-size: 9px;
   text-align: right;
 }
 
@@ -887,7 +942,8 @@ button { cursor: pointer; }
 }
 
 @media (max-width: 430px) {
-  .sender-copy { max-width: 150px; }
-  .sender-meta { min-width: 40px; }
+  .sender-copy { max-width: none; }
+  .sender-volume { width: 48px; flex-basis: 48px; }
+  .sender-last { display: none; }
   .login-intro { display: none; }
 }
