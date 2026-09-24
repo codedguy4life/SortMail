@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { getSenders } from "../api/api";
 import Sidebar from "../components/Sidebar";
 import BottomNav from "../components/BottomNav";
-import CategoryPills from "../components/CategoryPills";
 import SearchBar from "../components/SearchBar";
 import SenderList from "../components/SenderList";
 import ContactPanel from "../components/ContactPanel";
@@ -11,27 +10,16 @@ const Dashboard = () => {
   const [senders, setSenders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [activeCategory, setActiveCategory] = useState("all");
+  const [activeView, setActiveView] = useState("all");
   const [selectedSenderId, setSelectedSenderId] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    getSenders()
-      .then((data) => setSenders(data.senders))
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+    getSenders().then((data) => setSenders(data.senders || [])).catch((err) => setError(err.message)).finally(() => setLoading(false));
   }, []);
 
-  const counts = useMemo(() => {
-    const result = { all: 0, people: 0, companies: 0, newsletters: 0, transactions: 0, notifications: 0 };
-    senders.forEach((sender) => {
-      const count = sender.messageCount || 0;
-      result.all += count;
-      if (result[sender.category] !== undefined) result[sender.category] += count;
-    });
-    return result;
-  }, [senders]);
+  const totalEmails = useMemo(() => senders.reduce((total, sender) => total + (sender.messageCount || 0), 0), [senders]);
 
   const inactiveCount = useMemo(() => {
     const cutoff = Date.now() - 60 * 24 * 60 * 60 * 1000;
@@ -40,135 +28,45 @@ const Dashboard = () => {
 
   const filteredSenders = useMemo(() => {
     const query = search.trim().toLowerCase();
+    const cutoff = Date.now() - 60 * 24 * 60 * 60 * 1000;
     return senders.filter((sender) => {
-      const matchesSearch = !query ||
-        sender.displayName?.toLowerCase().includes(query) ||
-        sender.emailAddress?.toLowerCase().includes(query) ||
-        sender.domain?.toLowerCase().includes(query);
-
-      let matchesCategory = true;
-      if (["all", "people", "companies", "newsletters", "transactions", "notifications"].includes(activeCategory)) {
-        const backendCategory = {
-          people: "person",
-          companies: "company",
-          newsletters: "subscription",
-          transactions: "transaction",
-          notifications: "notification",
-        }[activeCategory];
-
-        matchesCategory = activeCategory === "all" || sender.category === backendCategory;
-      } else if (activeCategory === "manage-inactive") {
-        const cutoff = Date.now() - 60 * 24 * 60 * 60 * 1000;
-        matchesCategory = sender.lastMessageAt && new Date(sender.lastMessageAt).getTime() < cutoff;
-      } else if (activeCategory.startsWith("manage-")) {
-        matchesCategory = false;
-      }
-
-      return matchesSearch && matchesCategory;
+      const matchesSearch = !query || sender.displayName?.toLowerCase().includes(query) || sender.emailAddress?.toLowerCase().includes(query) || sender.domain?.toLowerCase().includes(query);
+      const matchesView = activeView === "all" || (activeView === "inactive" && sender.lastMessageAt && new Date(sender.lastMessageAt).getTime() < cutoff);
+      return matchesSearch && matchesView;
     });
-  }, [senders, search, activeCategory]);
+  }, [senders, search, activeView]);
 
-  const changeCategory = (category) => {
-    setActiveCategory(category);
-    setSelectedSenderId(null);
-    setSelectedIds([]);
-  };
-
-  const handleCheck = (id) => {
-    setSelectedIds((ids) => ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]);
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    window.location.href = "/";
-  };
+  const changeView = (view) => { setActiveView(view); setSelectedSenderId(null); setSelectedIds([]); };
+  const handleCheck = (id) => setSelectedIds((ids) => ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]);
+  const handleLogout = () => { localStorage.removeItem("token"); localStorage.removeItem("user"); window.location.href = "/"; };
 
   if (loading) return <div className="app-loading">Loading your inbox...</div>;
-  if (error) return <main className="error-page"><h1>Something went wrong</h1><p>{error}</p><button onClick={handleLogout}>Sign out</button></main>;
+  if (error) return <main className="error-page"><div><h1>Something went wrong</h1><p>{error}</p><button onClick={handleLogout}>Sign out</button></div></main>;
 
   const user = JSON.parse(localStorage.getItem("user") || "{}");
-  const totalEmails = counts.all;
-
-  const manageCopy = {
-    "manage-inactive": {
-      title: "Inactive senders",
-      subtitle: "Senders with no new email in the last 60 days.",
-    },
-    "manage-trash": {
-      title: "Trash",
-      subtitle: "Deleted messages and senders will appear here once cleanup actions are connected.",
-    },
-    "manage-unsubscribe": {
-      title: "Unsubscribe",
-      subtitle: "Senders with detected unsubscribe options will appear here once detection is connected.",
-    },
-  };
-
-  const isManageView = activeCategory.startsWith("manage-");
-  const headerTitle = isManageView ? manageCopy[activeCategory].title : "See who is filling your inbox.";
-  const headerSubtitle = isManageView
-    ? manageCopy[activeCategory].subtitle
-    : "SortMail turns a crowded inbox into a clear view of the people, companies and subscriptions behind your email.";
+  const firstName = user.name?.split(" ")[0];
 
   return (
     <div className="mail-app">
-      <Sidebar
-        activeCategory={activeCategory}
-        onCategoryChange={changeCategory}
-        onLogout={handleLogout}
-        counts={counts}
-        inactiveCount={inactiveCount}
-      />
+      <Sidebar activeView={activeView} onViewChange={changeView} onLogout={handleLogout} totalEmails={totalEmails} senderCount={senders.length} inactiveCount={inactiveCount} />
       <main className="mail-main">
-        <header className="mobile-header">
-          <div className="brand"><span className="brand-mark">S</span><span>SortMail</span></div>
-          <button onClick={handleLogout} aria-label="Sign out">↪</button>
-        </header>
-
+        <header className="mobile-header"><div className="brand"><span className="brand-mark">S</span><span>SortMail</span></div><button onClick={handleLogout} aria-label="Sign out">↪</button></header>
         <section className="directory-header">
           <div>
-            <p className="eyebrow">Good morning{user.name ? `, ${user.name.split(" ")[0]}` : ""}</p>
-            <h1>{headerTitle}</h1>
-            <p className="header-subtitle">{headerSubtitle}</p>
+            <p className="eyebrow">Good morning{firstName ? ", " + firstName : ""}</p>
+            <h1>{activeView === "inactive" ? "Senders that have gone quiet." : "See who is filling your inbox."}</h1>
+            <p className="header-subtitle">{activeView === "inactive" ? "A real view of senders with no new email in the last 60 days." : "SortMail organizes your real Gmail data around the people and senders behind your messages."}</p>
           </div>
           <div className="inbox-stat"><strong>{totalEmails}</strong><span>emails synced</span></div>
         </section>
-
-        <div className="mobile-only">
-          <CategoryPills activeCategory={activeCategory} onCategoryChange={changeCategory} />
-        </div>
-
         <section className="directory-toolbar">
           <SearchBar value={search} onChange={setSearch} />
-          <div className="selection-tools">
-            <span>{filteredSenders.length} senders</span>
-            {selectedIds.length > 0 && <><button>Archive selected</button><button>Manage selected</button></>}
-          </div>
+          <div className="selection-tools"><span>{filteredSenders.length} sender{filteredSenders.length === 1 ? "" : "s"}</span>{selectedIds.length > 0 && <span className="selected-count">{selectedIds.length} selected</span>}</div>
         </section>
-
-        {!isManageView && (
-          <div className="batch-alert">
-            <span>✦</span>
-            <div>
-              <strong>Sender-first inbox</strong>
-              <p>Select senders to prepare bulk cleanup actions.</p>
-            </div>
-          </div>
-        )}
-
-        {isManageView && (
-          <div className="manage-note">
-            <strong>{manageCopy[activeCategory].title}</strong>
-            <span>{filteredSenders.length} matching senders</span>
-          </div>
-        )}
-
         <SenderList senders={filteredSenders} selectedSenderId={selectedSenderId} selectedIds={selectedIds} onSelect={setSelectedSenderId} onCheck={handleCheck} />
       </main>
-
       <ContactPanel senderId={selectedSenderId} onClose={() => setSelectedSenderId(null)} />
-      <BottomNav activeCategory={activeCategory} onCategoryChange={changeCategory} />
+      <BottomNav activeView={activeView} onViewChange={changeView} />
     </div>
   );
 };
