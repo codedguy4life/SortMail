@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { getSenders } from "../api/api";
+import { getEmailAccounts, getSenders, syncEmailAccount } from "../api/api";
 import Sidebar from "../components/Sidebar";
 import BottomNav from "../components/BottomNav";
 import SearchBar from "../components/SearchBar";
@@ -14,6 +14,8 @@ const Dashboard = () => {
   const [selectedSenderId, setSelectedSenderId] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
   const [search, setSearch] = useState("");
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState("");
 
   useEffect(() => {
     getSenders().then((data) => setSenders(data.senders || [])).catch((err) => setError(err.message)).finally(() => setLoading(false));
@@ -38,6 +40,32 @@ const Dashboard = () => {
 
   const changeView = (view) => { setActiveView(view); setSelectedSenderId(null); setSelectedIds([]); };
   const handleCheck = (id) => setSelectedIds((ids) => ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]);
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncMessage("");
+    try {
+      const data = await getEmailAccounts();
+      if (!data.emailAccounts?.length) {
+        setSyncMessage("No Gmail account is connected yet.");
+        return;
+      }
+
+      let synced = 0;
+      for (const account of data.emailAccounts) {
+        const result = await syncEmailAccount(account._id);
+        synced += result.result?.synced || 0;
+      }
+
+      const refreshed = await getSenders();
+      setSenders(refreshed.senders || []);
+      setSyncMessage(synced ? "Synced " + synced + " new emails." : "Inbox is already up to date.");
+    } catch (err) {
+      setSyncMessage(err.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const handleLogout = () => { localStorage.removeItem("token"); localStorage.removeItem("user"); window.location.href = "/"; };
 
   if (loading) return <div className="app-loading">Loading your inbox...</div>;
@@ -57,7 +85,12 @@ const Dashboard = () => {
             <h1>{activeView === "inactive" ? "Senders that have gone quiet." : "See who is filling your inbox."}</h1>
             <p className="header-subtitle">{activeView === "inactive" ? "A real view of senders with no new email in the last 60 days." : "SortMail organizes your real Gmail data around the people and senders behind your messages."}</p>
           </div>
-          <div className="inbox-stat"><strong>{totalEmails}</strong><span>emails synced</span></div>
+          <div className="header-actions">
+            <div className="inbox-stat"><strong>{totalEmails}</strong><span>emails synced</span></div>
+            <button className="sync-button" onClick={handleSync} disabled={syncing}>
+              {syncing ? "Syncing..." : "Sync inbox"}
+            </button>
+          </div>
         </section>
         <section className="directory-toolbar">
           <SearchBar value={search} onChange={setSearch} />
