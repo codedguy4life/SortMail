@@ -380,11 +380,39 @@ button { cursor: pointer; }
   text-align: right;
 }
 
+.header-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
 .inbox-stat strong,
 .inbox-stat span { display: block; }
 
 .inbox-stat strong { font-size: 24px; }
 .inbox-stat span { margin-top: 2px; color: var(--muted); font-size: 11px; }
+
+.sync-button {
+  height: 47px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.sync-button:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.sync-message {
+  margin: -18px 0 15px;
+  color: var(--muted);
+  font-size: 11px;
+}
 
 .directory-toolbar {
   display: flex;
@@ -782,7 +810,9 @@ button { cursor: pointer; }
 
   .directory-header h1 { font-size: 31px; }
   .header-subtitle { font-size: 13px; }
-  .inbox-stat { display: none; }
+  .header-actions { margin-top: 14px; }
+  .inbox-stat { display: block; text-align: left; }
+  .sync-button { flex: 1; }
 
   .mobile-only { display: block; }
 
@@ -813,6 +843,7 @@ button { cursor: pointer; }
 
   .directory-toolbar { display: block; }
   .selection-tools { margin: 9px 2px 11px; }
+  .sync-message { margin: -4px 2px 11px; }
 
   .sender-card { padding: 9px 7px; }
   .sender-last { display: none; }
