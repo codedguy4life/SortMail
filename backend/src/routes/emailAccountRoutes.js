@@ -148,7 +148,7 @@ router.post("/:emailAccountId/sync", authMiddleware, async (req, res) => {
       });
     }
 
-    const result = await syncEmails(emailAccount._id, 20);
+    const result = await syncEmails(emailAccount._id, 100, 500);
 
     await SyncState.findOneAndUpdate(
       {
