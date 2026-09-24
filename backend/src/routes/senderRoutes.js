@@ -6,28 +6,47 @@ const Email = require("../models/Email");
 
 const router = express.Router();
 
-/*
-  GET /api/senders
-
-  Returns senders belonging to the authenticated user.
-*/
 router.get("/", authMiddleware, async (req, res) => {
   try {
-    const senders = await Sender.find({
-      userId: req.user.userId,
-    })
-      .sort({
-        messageCount: -1,
-        lastMessageAt: -1,
-      })
-      .select(
-        "_id emailAddress domain displayName category messageCount lastMessageAt",
-      );
+    const senders = await Sender.find({ userId: req.user.userId })
+      .sort({ messageCount: -1, lastMessageAt: -1 })
+      .select("_id emailAddress domain displayName category messageCount lastMessageAt")
+      .lean();
+
+    const senderIds = senders.map((sender) => sender._id);
+
+    const latestEmails = await Email.aggregate([
+      { $match: { userId: new (require("mongoose").Types.ObjectId)(req.user.userId), senderId: { $in: senderIds } } },
+      { $sort: { receivedAt: -1 } },
+      {
+        $group: {
+          _id: "$senderId",
+          latestSubject: { $first: "$subject" },
+          latestReceivedAt: { $first: "$receivedAt" },
+          unreadCount: {
+            $sum: { $cond: [{ $eq: ["$isRead", false] }, 1, 0] },
+          },
+        },
+      },
+    ]);
+
+    const latestBySender = new Map(latestEmails.map((item) => [item._id.toString(), item]));
+
+    const enrichedSenders = senders.map((sender) => {
+      const latest = latestBySender.get(sender._id.toString());
+
+      return {
+        ...sender,
+        latestSubject: latest?.latestSubject || "",
+        latestReceivedAt: latest?.latestReceivedAt || sender.lastMessageAt || null,
+        unreadCount: latest?.unreadCount || 0,
+      };
+    });
 
     return res.status(200).json({
       success: true,
-      count: senders.length,
-      senders,
+      count: enrichedSenders.length,
+      senders: enrichedSenders,
     });
   } catch (error) {
     console.error("Get senders error:", error);
@@ -39,18 +58,6 @@ router.get("/", authMiddleware, async (req, res) => {
   }
 });
 
-/*
-  GET /api/senders/:senderId/emails
-
-  Returns emails belonging to a specific sender.
-
-  IMPORTANT:
-  We check BOTH:
-    senderId
-    userId
-
-  This prevents one user from requesting another user's sender.
-*/
 router.get("/:senderId/emails", authMiddleware, async (req, res) => {
   try {
     const { senderId } = req.params;
@@ -71,9 +78,7 @@ router.get("/:senderId/emails", authMiddleware, async (req, res) => {
       senderId: sender._id,
       userId: req.user.userId,
     })
-      .sort({
-        receivedAt: -1,
-      })
+      .sort({ receivedAt: -1 })
       .select("_id gmailMessageId threadId subject receivedAt isRead labels");
 
     return res.status(200).json({
@@ -85,6 +90,7 @@ router.get("/:senderId/emails", authMiddleware, async (req, res) => {
         displayName: sender.displayName,
         category: sender.category,
         messageCount: sender.messageCount,
+        lastMessageAt: sender.lastMessageAt,
       },
       count: emails.length,
       emails,
